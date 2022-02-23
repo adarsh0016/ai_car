@@ -1,42 +1,59 @@
-import pygame
+import pickle
 import neat
+import pygame
 import time
 import os
-import random
 import math
-import configparser
+import bpy
 
-# geting the global variables from the config file
-configParser = configparser.RawConfigParser()
-configFilePath = os.path.join(os.path.dirname(__file__), 'Setting.cfg')
-configParser.read(configFilePath)
 
 # window width and height
-WIN_WIDTH = configParser.getint("window", "WIN_WIDTH")
-WIN_HEIGHT = configParser.getint("window", "WIN_HEIGHT")
+WIN_WIDTH = 1100
+WIN_HEIGHT = 800
 
 # car width and height
-CAR_SIZE_X = configParser.getint('car', 'CAR_SIZE_X')
-CAR_SIZE_Y = configParser.getint('car', 'CAR_SIZE_Y')
-CAR_VEL = configParser.getint('car', 'CAR_VEL')
-CAR_ROT = configParser.getint('car', 'CAR_ROT')
+CAR_SIZE_X = 60
+CAR_SIZE_Y = 30
+CAR_VEL = 20
+CAR_VEL_MIN = -20
+CAR_ROT = 10
 
-BORDER_COLOR = (255, 255, 255, 255) # white
+ROAD_COLOR = (0, 0, 0, 255) # black
 
 # loading all the images nescessary for the game
-CAR_IMAGE = pygame.image.load("car.png")
+CAR_IMAGE = pygame.image.load("..\\..\\..\\Users\\LENOVO\Desktop\\Final year Project\\AI car\\my ai car\\Sprites\\car.png")
 CAR_IMAGE = pygame.transform.scale(CAR_IMAGE, (CAR_SIZE_X, CAR_SIZE_Y)) # scaling the image
-CRASH_IMAGE = pygame.transform.scale(pygame.image.load("crash.png"), (50, 50))
 
-MAP = pygame.image.load("map.png")
+MAP = pygame.image.load("..\\..\\..\\Users\\LENOVO\Desktop\\Final year Project\\AI car\\my ai car\\Sprites\\map.png")
 MAP = pygame.transform.scale(MAP, (WIN_WIDTH, WIN_HEIGHT)) # scaling the map
+
+class Blender_object:
+    def __init__(self, obj, x, y):
+        self.obj = obj
+        self.position = (x, y)
+        self.obj.location.x = self.position[0]/10
+        self.obj.location.y = self.position[1]/10
+        
+    def turn_left(self):
+        self.obj.rotation_euler.z += math.radians(CAR_ROT)
+        
+    def turn_right(self):
+        self.obj.rotation_euler.z -= math.radians(CAR_ROT)
+        
+    def update(self, pos):
+        self.position = pos
+        print(self.position)
+        self.obj.location.x = self.position[0]/10
+        self.obj.location.y = self.position[1]/10
+        
+    def save_frame(self, frame_number):
+        self.obj.keyframe_insert(data_path="location", frame=frame_number)
 
 class Car:
     
     def __init__(self, x, y): # [550, 580]
         self.sprite = CAR_IMAGE
-        self.updated_sprite = CAR_IMAGE 
-        self.crash_sprite = CRASH_IMAGE
+        self.updated_sprite = CAR_IMAGE
         self.position = (x, y)
         self.angle = 0 # rotation of the car
         self.vel = CAR_VEL # velocity of the car
@@ -55,6 +72,8 @@ class Car:
         self.vel = self.vel + 1
         
     def slow_down(self):
+        if(self.vel == CAR_VEL_MIN):
+            return
         self.vel = self.vel - 1
         
     def turn_left(self):
@@ -95,7 +114,7 @@ class Car:
         # checking if the car has collided with the border
         for point in self.hitbox:
             # checking if the point is overlaps with the border
-            if MAP.get_at((round(point[0]), round(point[1]))) == BORDER_COLOR:
+            if MAP.get_at((int(point[0]), int(point[1]))) != ROAD_COLOR:
                 self.alive = False
                 break
             
@@ -106,10 +125,12 @@ class Car:
         y = int(self.center[1] + math.sin(math.radians(360 - (self.angle + sensor_angle))) * length)
 
         # While We Don't Hit BORDER_COLOR AND length < 300 (just a max dist the sensor can calculate)
-        while not MAP.get_at((x, y)) == BORDER_COLOR and length < 300:
+        while length < 300:
             length = length + 1
             x = int(self.center[0] + math.cos(math.radians(360 - (self.angle + sensor_angle))) * length)
             y = int(self.center[1] + math.sin(math.radians(360 - (self.angle + sensor_angle))) * length)
+            if MAP.get_at((x, y)) != ROAD_COLOR:
+                break
 
         # Calculate Distance To Border And Append To Radars List
         dist = int(math.sqrt(math.pow(x - self.center[0], 2) + math.pow(y - self.center[1], 2)))
@@ -117,7 +138,7 @@ class Car:
         
         
     # moving the car, this function is called in the for every frame in the main loop
-    def update(self, win):
+    def update(self):
         # end game when collision occurs
         if(self.alive == False):
             
@@ -150,56 +171,70 @@ class Car:
         for d in range(-90, 91, 45):
             self.check_sensor(d)
         
-        #drawing everything after updating the positions
-        self.draw(win)   
+    # # drawing the hitbox and the center of the car
+    # def draw_hitbox(self, win):
+    #     pygame.draw.circle(win, (255, 0, 0), self.center, 2)
+    #     pygame.draw.circle(win, (255, 0, 0), self.hitbox[0], 1)
+    #     pygame.draw.circle(win, (255, 0, 0), self.hitbox[1], 1)
+    #     pygame.draw.circle(win, (255, 0, 0), self.hitbox[2], 1)
+    #     pygame.draw.circle(win, (255, 0, 0), self.hitbox[3], 1)
+        
+    # def draw_sensors(self, win):
+    # # Optionally Draw All Sensors
+    #     for sensor in self.sensors:
+    #         position = sensor[0]
+    #         pygame.draw.line(win, (0, 255, 0), self.center, position, 1)
+    #         pygame.draw.circle(win, (0, 255, 0), position, 5)
+            
+    # functions for the neat algorithm
     
-    # drawing the map and car
-    def draw(self, win):
-        win.blit(MAP, (0, 0))
-        win.blit(self.updated_sprite, self.position)
-        
-        # drawing the sensors
-        #self.draw_sensors(win)
-        
-        # drawing the hitbox and the center of the car
-        # pygame.draw.circle(win, (255, 0, 0), self.center, 5)
-        # pygame.draw.circle(win, (255, 0, 0), self.hitbox[0], 1)
-        # pygame.draw.circle(win, (255, 0, 0), self.hitbox[1], 1)
-        # pygame.draw.circle(win, (255, 0, 0), self.hitbox[2], 1)
-        # pygame.draw.circle(win, (255, 0, 0), self.hitbox[3], 1)
-        
-        pygame.display.update()
-        
-    def draw_sensors(self, win):
-    # Optionally Draw All Sensors
-        for sensor in self.sensors:
-            position = sensor[0]
-            pygame.draw.line(win, (0, 255, 0), self.center, position, 1)
-            pygame.draw.circle(win, (0, 255, 0), position, 5)
+    def get_data(self):
+        # getting the distance to the border
+        sensors = self.sensors
+        return_values = [0, 0, 0, 0, 0] # five sensors
+        for i, sensor in enumerate(sensors):
+            return_values[i] = int(sensor[1] / 30) 
+            
+        return return_values
+    
+    def is_alive(self):
+        return self.alive
 
 def main():
     car = Car(550, 580)
+    blender_car = Blender_object(bpy.context.scene.objects["Cube"], car.center[0], car.center[1])
     run = True
-    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
-    clock = pygame.time.Clock()
+    
+    trained_ai_file = open('..\\..\\..\\Users\\LENOVO\Desktop\\Final year Project\\AI car\\my ai car\\Trained_nets\\best_ai_car', 'rb')
+    
+    trained_ai_list = pickle.load(trained_ai_file)
+    trained_ai = trained_ai_list[len(trained_ai_list) - 1][1]
+    
+    frame_number = 1
     
     while run:
-        clock.tick(30)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
-                    car.turn_left()
-                elif event.key == pygame.K_RIGHT:
-                    car.turn_right()
-                elif event.key == pygame.K_UP:
-                    car.speed_up()
-                elif event.key == pygame.K_DOWN:
-                    car.slow_down()
-        car.update(win)     
-                
-    pygame.quit()
-    quit()
+        if not car.is_alive() or frame_number > 1000:
+            run = False
+        
+        output = trained_ai.activate(car.get_data())
+        choice = output.index(max(output))
+        if choice == 0:
+            car.turn_left()
+            blender_car.turn_left()
+            blender_car.save_frame(frame_number)
+        elif choice == 1:
+            car.turn_right()
+            blender_car.turn_right()
+            blender_car.save_frame(frame_number)
+        elif choice == 2:
+            car.slow_down()
+        else:
+            car.speed_up()
+        
+        car.update()
+        blender_car.update(car.center)
+        blender_car.save_frame(frame_number)
+        
+        frame_number += 10
     
 main();
