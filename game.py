@@ -1,13 +1,11 @@
 import pygame
-import time
 import os
-import random
 import math
 import configparser
 
 # geting the global variables from the config file
 configParser = configparser.RawConfigParser()
-configFilePath = os.path.join(os.path.dirname(__file__), 'Setting.cfg')
+configFilePath = os.path.join(os.path.dirname(__file__), 'Configs//Setting.cfg')
 configParser.read(configFilePath)
 
 # window width and height
@@ -18,9 +16,12 @@ WIN_HEIGHT = configParser.getint("window", "WIN_HEIGHT")
 CAR_SIZE_X = configParser.getint('car', 'CAR_SIZE_X')
 CAR_SIZE_Y = configParser.getint('car', 'CAR_SIZE_Y')
 CAR_VEL = configParser.getint('car', 'CAR_VEL')
+CAR_VEL_MIN = configParser.getint('car', 'CAR_VEL_MIN')
 CAR_ROT = configParser.getint('car', 'CAR_ROT')
+CAR_POS_X = configParser.getint('car', 'CAR_POS_x')
+CAR_POS_Y = configParser.getint('car', 'CAR_POS_y')
 
-ROAD_COLOR = (0, 0, 0, 255) # black
+ROAD_COLOR = (0, 0, 0, 255) #black
 
 # loading all the images nescessary for the game
 CAR_IMAGE = pygame.image.load("Sprites\car.png")
@@ -30,13 +31,18 @@ CRASH_IMAGE = pygame.transform.scale(pygame.image.load("Sprites\crash.png"), (50
 MAP = pygame.image.load("Sprites\map.png")
 MAP = pygame.transform.scale(MAP, (WIN_WIDTH, WIN_HEIGHT)) # scaling the map
 
+class Map:
+    image = MAP
+    width = WIN_WIDTH
+    height = WIN_HEIGHT
+
 class Car:
     
-    def __init__(self, x, y): # [550, 580]
+    def __init__(self): # [550, 580]
         self.sprite = CAR_IMAGE
         self.updated_sprite = CAR_IMAGE 
         self.crash_sprite = CRASH_IMAGE
-        self.position = (x, y)
+        self.position = (CAR_POS_X, CAR_POS_Y)
         self.angle = 0 # rotation of the car
         self.vel = CAR_VEL # velocity of the car
         
@@ -48,12 +54,14 @@ class Car:
         self.time = 0 # time taken
         
         self.sensors = [] # list of the radars
-        self.hitbox = [(self.position[0], self.position[1]), (self.position[0] + CAR_SIZE_X, self.position[1]), (self.position[0] + CAR_SIZE_X, self.position[1] + CAR_SIZE_Y), (self.position[0], self.position[1] + CAR_SIZE_Y)] # hitbox of the car
+        self.hitbox = [(self.position[0], self.position[1]), (self.position[0] + CAR_SIZE_X, self.position[1]), (self.position[0], self.position[1] + CAR_SIZE_Y), (self.position[0] + CAR_SIZE_X, self.position[1] + CAR_SIZE_Y)] # hitbox of the car
             
     def speed_up(self):
         self.vel = self.vel + 1
         
     def slow_down(self):
+        if(self.vel == CAR_VEL_MIN):
+            return
         self.vel = self.vel - 1
         
     def turn_left(self):
@@ -71,7 +79,7 @@ class Car:
         # https://stackoverflow.com/questions/4183208/how-do-i-rotate-an-image-around-its-center-using-pygame
         # got this from stackoverflow how to rotate an image around its center
         rotated_image = pygame.transform.rotate(self.sprite, self.angle)
-        new_rect = rotated_image.get_rect(center=self.updated_sprite.get_rect(topleft=self.position).center) #this function returns a rectangle with the same center as the rotated image
+        new_rect = rotated_image.get_rect(center=self.center) #this function returns a rectangle with the same center as the rotated image
         self.position = new_rect.topleft
         self.center = new_rect.center
 
@@ -79,7 +87,7 @@ class Car:
         # https://www.youtube.com/watch?v=paU8JumpTXc  rotating hitbox
         dx = CAR_SIZE_X/2 - 4 # -4 because the hitbox is 4 pixels smaller than the car for better collision detection and game feel
         dy = CAR_SIZE_Y/2 - 4
-
+        
         self.hitbox[0] = ((-dx * math.cos(math.radians(self.angle)) - dy * math.sin(math.radians(self.angle)) + self.center[0]), 
                           (dx * math.sin(math.radians(self.angle)) - dy * math.cos(math.radians(self.angle)) + self.center[1]))
         self.hitbox[1] = ((dx * math.cos(math.radians(self.angle)) - dy * math.sin(math.radians(self.angle)) + self.center[0]), 
@@ -95,7 +103,7 @@ class Car:
         # checking if the car has collided with the border
         for point in self.hitbox:
             # checking if the point is overlaps with the border
-            if MAP.get_at((int(point[0]), int(point[1]))) != ROAD_COLOR:
+            if Map.image.get_at((int(point[0]), int(point[1]))) != ROAD_COLOR:
                 self.alive = False
                 break
             
@@ -110,7 +118,7 @@ class Car:
             length = length + 1
             x = int(self.center[0] + math.cos(math.radians(360 - (self.angle + sensor_angle))) * length)
             y = int(self.center[1] + math.sin(math.radians(360 - (self.angle + sensor_angle))) * length)
-            if MAP.get_at((x, y)) != ROAD_COLOR:
+            if Map.image.get_at((x, y)) != ROAD_COLOR:
                 break
 
         # Calculate Distance To Border And Append To Radars List
@@ -119,10 +127,22 @@ class Car:
         
         
     # moving the car, this function is called in the for every frame in the main loop
-    def update(self, win):
+    def update(self, choice):
+        if choice == 0:
+            self.turn_left()
+        elif choice == 1:
+            self.turn_right()
+        elif choice == 2:
+            self.speed_up()
+        elif choice == 3:
+            self.slow_down()
+        else:
+            # do nothing just cruising
+            pass
+                
         # end game when collision occurs
         if(self.alive == False):
-            
+            # restart new generation
             return
         
         # checking if the car has collided with the border every frame
@@ -150,31 +170,25 @@ class Car:
         
         #all the sensors are calculated here
         for d in range(-90, 91, 45):
-            self.check_sensor(d)
-        
-        #drawing everything after updating the positions
-        self.draw(win)   
+            self.check_sensor(d)  
     
     # drawing the map and car
     def draw(self, win):
-        win.blit(MAP, (0, 0))
         win.blit(self.updated_sprite, self.position)
         
         # drawing the sensors
         #self.draw_sensors(win)
         
         # drawing the hitbox and the center of the car
-        self.draw_hitbox(win)
-        
-        pygame.display.update()
+        #self.draw_hitbox(win)
         
     # drawing the hitbox and the center of the car
     def draw_hitbox(self, win):
         pygame.draw.circle(win, (255, 0, 0), self.center, 2)
         pygame.draw.circle(win, (255, 0, 0), self.hitbox[0], 1)
-        pygame.draw.circle(win, (255, 255, 0), self.hitbox[1], 1)
-        pygame.draw.circle(win, (0, 255, 0), self.hitbox[2], 1)
-        pygame.draw.circle(win, (0, 0, 255), self.hitbox[3], 1)
+        pygame.draw.circle(win, (255, 0, 0), self.hitbox[1], 1)
+        pygame.draw.circle(win, (255, 0, 0), self.hitbox[2], 1)
+        pygame.draw.circle(win, (255, 0, 0), self.hitbox[3], 1)
         
     def draw_sensors(self, win):
     # Optionally Draw All Sensors
@@ -182,11 +196,37 @@ class Car:
             position = sensor[0]
             pygame.draw.line(win, (0, 255, 0), self.center, position, 1)
             pygame.draw.circle(win, (0, 255, 0), position, 5)
+            
+    # functions for the neat algorithm
+    
+    def get_default_data(self):
+        #return [3, 4, 4, 10, 2]
+        return [0, 0, 0, 0, 0]
+    
+    def get_data(self):
+        # getting the distance to the border
+        sensors = self.sensors
+        return_values = [0, 0, 0, 0, 0] # five sensors
+        for i, sensor in enumerate(sensors):
+            return_values[i] = int(sensor[1] / 30) 
+          
+        return return_values
+    
+    def is_alive(self):
+        return self.alive
+    
+    def get_reward(self):
+        return round(self.distance/(self.time * 20) + self.vel / 14)
+    
+def render(win, car):
+    win.blit(Map.image, (0, 0))
+    car.draw(win)   
+    pygame.display.update()  
 
 def main():
-    car = Car(550, 580)
+    car = Car()
     run = True
-    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+    win = pygame.display.set_mode((Map.width, Map.height))
     clock = pygame.time.Clock()
     
     while run:
@@ -194,18 +234,24 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
+            
+            choice = 4
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    car.turn_left()
+                    choice = 0
                 elif event.key == pygame.K_RIGHT:
-                    car.turn_right()
+                    choice = 1
                 elif event.key == pygame.K_UP:
-                    car.speed_up()
+                    choice = 2
                 elif event.key == pygame.K_DOWN:
-                    car.slow_down()
-        car.update(win)     
+                    choice = 3
+                            
+        car.update(choice) 
+        #drawing everything after updating the positions
+        render(win, car)
                 
     pygame.quit()
     quit()
-    
-main();
+
+if __name__ == "__main__":  # when used on its own i.e. just the game
+    main()
