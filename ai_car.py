@@ -1,53 +1,66 @@
+import neat
 import pickle
-import pygame
 import os
-import configparser
-
-import game
-
-# geting the global variables from the config file
-configParser = configparser.RawConfigParser()
-configFilePath = os.path.join(os.path.dirname(__file__), 'Configs//Setting.cfg')
-configParser.read(configFilePath)
-
-#fps settings
-FPS = configParser.getint("window", "FPS")
+from car_training import *
 
 def render(win, car):
-    win.blit(game.Map.image, (0, 0))
-    car.draw(win) 
-    pygame.display.update()
+    win.blit(sim.Map.image, (0, 0))
+    sim.Map.draw_path(win)
+    car.draw(win)
+    pygame.display.flip()
 
-def main():
-    car = game.Car()
-    run = True
-    win = pygame.display.set_mode((game.Map.width, game.Map.height))
+def run_sim(genome, config):
+    win = pygame.display.set_mode((sim.Map.width, sim.Map.height))
+    
+    net = neat.nn.FeedForwardNetwork.create(genome, config)
+    
+    car = sim.Car()
+    
     clock = pygame.time.Clock()
     
-    trained_ai_file = open('Trained_nets\\best_ai_car', 'rb')
-    
-    trained_ai_list = pickle.load(trained_ai_file)
-    trained_ai = trained_ai_list[len(trained_ai_list) - 1][1]
-    
-    trained_ai_file.close()
-    
-    while run:
-        clock.tick(FPS)
+    while True:
+        #exit on quit
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                run = False
-
-        if car.is_alive():
-            output = trained_ai.activate(car.get_data())
-            choice = output.index(max(output))
+                sys.exit(0)
+                
+        if event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_presses = pygame.mouse.get_pressed()
+                if mouse_presses[0]:
+                    # Map.obstacle_pos.append(pygame.mouse.get_pos())
+                    sim.Map.select_nearest_junction(pygame.mouse.get_pos())
+                    
+        if not sim.Map.dest_pos or car.if_reached():
             
-            car.update(choice) 
-            
-            #drawing everything after updating the positions
             render(win, car)
-            
-    pygame.quit()
-    quit() 
+            continue
+                    
+        output = net.activate(car.get_data())
+        choice = output.index(max(output))
+        car.update(choice)
+        
+        if not car.is_alive():
+            print("crashed!")
+            return
+        
+        render(win, car)
+        clock.tick(FPS) #FPS
 
+def main(config_path):
+    #load configs
+    config = neat.config.Config(neat.DefaultGenome,
+                                    neat.DefaultReproduction,
+                                    neat.DefaultSpeciesSet,
+                                    neat.DefaultStagnation,
+                                    config_path)
+
+    with open('Trained_nets\\winner.pkl', "rb") as f:
+        genome = pickle.load(f)
+
+    # Call game with only the loaded genome
+    run_sim(genome, config)
+    
 if __name__ == "__main__":
-    main()
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'Configs//NEAT_config.txt')
+    main(config_path)

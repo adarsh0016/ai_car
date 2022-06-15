@@ -5,8 +5,9 @@ import sys
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
+import random
 
-import game
+import sim_q_table as game
 
 # https://www.youtube.com/watch?v=yMk_XtIEzH8&list=PLQVvvaa0QuDezJFIOU5wDdfy4e9vdnx-7
 
@@ -14,9 +15,10 @@ import game
 # q learning parameters
 LEARNING_RATE = 0.9 #between 0 and 1, preffered to have it large and decay over time
 DISCOUNT = 0.95 #future reward vs current reward or action
-EPISODES = 3000 #number of episodes to run or simulations
+EPISODES = 50000 #number of episodes to run or simulations
 
 SHOW_EVERY = 500 # how often to display the training progress
+change_dest_every = 500
 
 epsilon = 0.5 #probability of random action
 START_EPSILON_DECAYING = 1
@@ -25,12 +27,12 @@ END_EPSILON_DECAYING = EPISODES // 1.25
 epsilon_decay_value = epsilon/(END_EPSILON_DECAYING - START_EPSILON_DECAYING)
 
 #q_table initiation
-q_table = np.random.uniform(low = -2, high = 2, size = ([11, 11, 11, 11, 11] + [5])) #11x11x11x11x5 0-10 is the output of the sensors
+q_table = np.random.uniform(low = -2, high = 2, size = ([11, 11, 11, 11, 11] + [9])) #11x11x11x11x5 0-10 is the output of the sensors
 
-# local_dir = os.path.dirname(__file__)
-# Q_table_file_path = os.path.join(local_dir, 'Trained_nets\\Q_table_trained')
-# q_table_file = open(Q_table_file_path, "rb")
-# q_table = pickle.load(q_table_file)
+local_dir = os.path.dirname(__file__)
+Q_table_file_path = os.path.join(local_dir, 'Trained_nets\\Q_table_trained')
+q_table_file = open(Q_table_file_path, "rb")
+q_table = pickle.load(q_table_file)
 
 ep_rewards = []
 aggr_ep_rewards = {'ep': [], 'avg': [], 'min': [], 'max': []}
@@ -51,6 +53,7 @@ ALIVE_FONT = pygame.font.SysFont("Arial", 20)
 
 def render(win, car):
         win.blit(game.Map.image, (0, 0))
+        game.Map.draw_path(win)
         #Draw map and all cars that are alive
         if car.is_alive():
             car.draw(win)
@@ -74,6 +77,10 @@ def main():
         
         car = game.Car()
         discrete_state = get_discrete_state(car.get_default_data())  # i have to improve this function in game.py because it always returns [0,0,0,0,0]
+        
+        if episode % change_dest_every == 0 and list(game.Map.paths.keys()):
+            game.Map.dest_pos = list(game.Map.paths.keys())[random.randrange(2, len(list(game.Map.paths.keys())))]
+            game.Map.Shortest_path()
         
         counter = 0  #to remove the car after a certain amount of steps
         still_alive = True
